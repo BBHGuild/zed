@@ -1014,7 +1014,7 @@
     "button": true,
     // Default width of the outline panel.
     "default_width": 300,
-    // Where to dock the outline panel. Can be 'left' or 'right'.
+    // Where to dock the outline panel. Can be 'left', 'bottom', or 'right'.
     "dock": "right",
     // Whether to show file icons in the outline panel.
     "file_icons": true,

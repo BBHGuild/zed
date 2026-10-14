@@ -1,6 +1,6 @@
 use editor::{EditorSettings, ui_scrollbar_settings_from_raw};
 use gpui::{App, Pixels};
-pub use settings::{DockSide, FolderIndicator, Settings, ShowIndentGuides};
+pub use settings::{DockPosition, FolderIndicator, Settings, ShowIndentGuides};
 use settings::{IntoGpui, RegisterSetting};
 use ui::scrollbars::{ScrollbarVisibility, ShowScrollbar};
 
@@ -8,7 +8,7 @@ use ui::scrollbars::{ScrollbarVisibility, ShowScrollbar};
 pub struct OutlinePanelSettings {
     pub button: bool,
     pub default_width: Pixels,
-    pub dock: DockSide,
+    pub dock: DockPosition,
     pub file_icons: bool,
     pub folder_indicator: FolderIndicator,
     pub git_status: bool,

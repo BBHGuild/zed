@@ -41,7 +41,7 @@ pub const THREADS_LIST_MAX_WIDTH: Pixels = px(800.0);
 pub struct PanelLayout {
     pub(crate) agent_dock: Option<DockPosition>,
     pub(crate) project_panel_dock: Option<DockSide>,
-    pub(crate) outline_panel_dock: Option<DockSide>,
+    pub(crate) outline_panel_dock: Option<DockPosition>,
     pub(crate) collaboration_panel_dock: Option<DockPosition>,
     pub(crate) git_panel_dock: Option<DockPosition>,
 }
@@ -50,7 +50,7 @@ impl PanelLayout {
     const AGENT: Self = Self {
         agent_dock: Some(DockPosition::Left),
         project_panel_dock: Some(DockSide::Right),
-        outline_panel_dock: Some(DockSide::Right),
+        outline_panel_dock: Some(DockPosition::Right),
         collaboration_panel_dock: Some(DockPosition::Right),
         git_panel_dock: Some(DockPosition::Right),
     };
@@ -58,7 +58,7 @@ impl PanelLayout {
     const EDITOR: Self = Self {
         agent_dock: Some(DockPosition::Right),
         project_panel_dock: Some(DockSide::Left),
-        outline_panel_dock: Some(DockSide::Left),
+        outline_panel_dock: Some(DockPosition::Left),
         collaboration_panel_dock: Some(DockPosition::Left),
         git_panel_dock: Some(DockPosition::Left),
     };
@@ -2241,7 +2241,7 @@ mod tests {
 
             assert_eq!(user_layout.agent_dock, Some(DockPosition::Right));
             assert_eq!(user_layout.project_panel_dock, Some(DockSide::Right));
-            assert_eq!(user_layout.outline_panel_dock, Some(DockSide::Left));
+            assert_eq!(user_layout.outline_panel_dock, Some(DockPosition::Left));
             assert_eq!(
                 user_layout.collaboration_panel_dock,
                 Some(DockPosition::Left)

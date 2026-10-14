@@ -40,7 +40,7 @@ use std::{
     u32,
 };
 
-use outline_panel_settings::{DockSide, FolderIndicator, OutlinePanelSettings, ShowIndentGuides};
+use outline_panel_settings::{FolderIndicator, OutlinePanelSettings, ShowIndentGuides};
 use project::{File, Fs, Project, ProjectPath};
 use search::{BufferSearchBar, ProjectSearchView};
 use serde::{Deserialize, Serialize};
@@ -5600,27 +5600,33 @@ impl Panel for OutlinePanel {
 
     fn position(&self, _: &Window, cx: &App) -> DockPosition {
         match OutlinePanelSettings::get_global(cx).dock {
-            DockSide::Left => DockPosition::Left,
-            DockSide::Right => DockPosition::Right,
+            settings::DockPosition::Left => DockPosition::Left,
+            settings::DockPosition::Bottom => DockPosition::Bottom,
+            settings::DockPosition::Right => DockPosition::Right,
         }
     }
 
     fn position_is_valid(&self, position: DockPosition) -> bool {
-        matches!(position, DockPosition::Left | DockPosition::Right)
+        matches!(position, DockPosition::Left | DockPosition::Bottom | DockPosition::Right)
     }
 
     fn set_position(&mut self, position: DockPosition, _: &mut Window, cx: &mut Context<Self>) {
         settings::update_settings_file(self.fs.clone(), cx, move |settings, _| {
             let dock = match position {
-                DockPosition::Left | DockPosition::Bottom => DockSide::Left,
-                DockPosition::Right => DockSide::Right,
+                DockPosition::Left => settings::DockPosition::Left,
+                DockPosition::Bottom => settings::DockPosition::Bottom,
+                DockPosition::Right => settings::DockPosition::Right,
             };
             settings.outline_panel.get_or_insert_default().dock = Some(dock);
         });
     }
 
-    fn default_size(&self, _: &Window, cx: &App) -> Pixels {
-        OutlinePanelSettings::get_global(cx).default_width
+    fn default_size(&self, window: &Window, cx: &App) -> Pixels {
+        let settings = OutlinePanelSettings::get_global(cx);
+        match self.position(window, cx) {
+            DockPosition::Left | DockPosition::Right => settings.default_width,
+            DockPosition::Bottom => px(240.0),
+        }
     }
 
     fn icon(&self, _: &Window, cx: &App) -> Option<IconName> {

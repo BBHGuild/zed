@@ -1219,7 +1219,7 @@ pub struct OutlinePanelSettingsContent {
     /// The position of outline panel
     ///
     /// Default: right (Agentic layout), left (Classic layout)
-    pub dock: Option<DockSide>,
+    pub dock: Option<DockPosition>,
     /// Whether to show file icons in the outline panel.
     ///
     /// Default: true
