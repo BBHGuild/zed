@@ -23,7 +23,7 @@ use gpui::{
     UniformListScrollHandle, WeakEntity, Window, actions, anchored, deferred, div, point, px, size,
     uniform_list,
 };
-use language::{Anchor, BufferId, BufferSnapshot, DiskState, OffsetRangeExt, OutlineItem};
+use language::{Anchor, BufferId, BufferSnapshot, DiskState, OffsetRangeExt, OutlineItem, ToPoint};
 use language::{LanguageAwareStyling, language_settings::LanguageSettings};
 
 use menu::{Cancel, SelectFirst, SelectLast, SelectNext, SelectPrevious};
@@ -149,6 +149,7 @@ pub struct OutlinePanel {
     default_depth_applied_buffers: HashSet<BufferId>,
     outline_children_cache: HashMap<BufferId, OutlineChildren>,
     hide_symbols_override: Option<bool>,
+    custom_collapsed_outlines: HashMap<String, HashSet<CollapsedSymbolKey>>,
 }
 
 #[derive(Debug)]
@@ -997,9 +998,18 @@ pub enum Event {
     Focus,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct CollapsedSymbolKey {
+    pub start_row: u32,
+    pub depth: usize,
+    pub text: String,
+}
+
+#[derive(Serialize, Deserialize, Default)]
 struct SerializedOutlinePanel {
     active: Option<bool>,
+    #[serde(default)]
+    custom_collapsed: HashMap<String, HashSet<CollapsedSymbolKey>>,
 }
 
 pub fn init(cx: &mut App) {
@@ -1161,6 +1171,8 @@ impl OutlinePanel {
                         }
                         if old_expansion_depth != outline_panel_settings.expand_outlines_with_depth
                         {
+                            outline_panel.custom_collapsed_outlines.clear();
+                            outline_panel.serialize(cx);
                             let old_collapsed_entries = outline_panel.collapsed_entries.clone();
                             outline_panel
                                 .collapsed_entries
@@ -1263,6 +1275,9 @@ impl OutlinePanel {
                 fs_entries: Vec::new(),
                 fs_children_count: HashMap::default(),
                 collapsed_entries: HashSet::default(),
+                custom_collapsed_outlines: serialized
+                    .map(|s| s.custom_collapsed.clone())
+                    .unwrap_or_default(),
                 unfolded_dirs: HashMap::default(),
                 selected_entry: SelectedEntry::None,
                 context_menu: None,
@@ -1319,12 +1334,16 @@ impl OutlinePanel {
             return;
         };
         let active = self.active.then_some(true);
+        let custom_collapsed = self.custom_collapsed_outlines.clone();
         let kvp = KeyValueStore::global(cx);
         self.pending_serialization = cx.background_spawn(
             async move {
                 kvp.write_kvp(
                     serialization_key,
-                    serde_json::to_string(&SerializedOutlinePanel { active })?,
+                    serde_json::to_string(&SerializedOutlinePanel {
+                        active,
+                        custom_collapsed,
+                    })?,
                 )
                 .await?;
                 anyhow::Ok(())
@@ -1923,6 +1942,24 @@ impl OutlinePanel {
         };
         let expanded = self.collapsed_entries.remove(&collapsed_entry);
         if expanded {
+            if let PanelEntry::Outline(OutlineEntry::Outline(outline)) = &selected_entry {
+                let buffer_id = outline.range.start.buffer_id;
+                if let Some(file_key) = self.file_path_for_buffer_id(buffer_id, cx) {
+                    self.ensure_custom_collapsed_initialized(buffer_id, &file_key, cx);
+                    if let Some(snapshot) = self.buffer_snapshot_for_id(buffer_id, cx) {
+                        let start_row = outline.range.start.to_point(&snapshot).row;
+                        let key = CollapsedSymbolKey {
+                            start_row,
+                            depth: outline.depth,
+                            text: outline.text.to_string(),
+                        };
+                        if let Some(set) = self.custom_collapsed_outlines.get_mut(&file_key) {
+                            set.remove(&key);
+                        }
+                        self.serialize(cx);
+                    }
+                }
+            }
             active_editor.update(cx, |editor, cx| {
                 buffers_to_unfold.retain(|buffer_id| editor.is_buffer_folded(*buffer_id, cx));
             });
@@ -2009,9 +2046,30 @@ impl OutlinePanel {
             PanelEntry::Outline(OutlineEntry::Excerpt(excerpt)) => self
                 .collapsed_entries
                 .insert(CollapsedEntry::Excerpt(excerpt.clone())),
-            PanelEntry::Outline(OutlineEntry::Outline(outline)) => self
-                .collapsed_entries
-                .insert(CollapsedEntry::Outline(outline.range.clone())),
+            PanelEntry::Outline(OutlineEntry::Outline(outline)) => {
+                let buffer_id = outline.range.start.buffer_id;
+                let collapsed = self
+                    .collapsed_entries
+                    .insert(CollapsedEntry::Outline(outline.range.clone()));
+                if collapsed {
+                    if let Some(file_key) = self.file_path_for_buffer_id(buffer_id, cx) {
+                        self.ensure_custom_collapsed_initialized(buffer_id, &file_key, cx);
+                        if let Some(snapshot) = self.buffer_snapshot_for_id(buffer_id, cx) {
+                            let start_row = outline.range.start.to_point(&snapshot).row;
+                            let key = CollapsedSymbolKey {
+                                start_row,
+                                depth: outline.depth,
+                                text: outline.text.to_string(),
+                            };
+                            if let Some(set) = self.custom_collapsed_outlines.get_mut(&file_key) {
+                                set.insert(key);
+                            }
+                            self.serialize(cx);
+                        }
+                    }
+                }
+                collapsed
+            }
             PanelEntry::Search(_) => false,
         };
 
@@ -2108,6 +2166,13 @@ impl OutlinePanel {
             buffers_to_unfold.retain(|buffer_id| editor.is_buffer_folded(*buffer_id, cx));
         });
 
+        for buffer_id in self.buffers.keys() {
+            if let Some(file_key) = self.file_path_for_buffer_id(*buffer_id, cx) {
+                self.custom_collapsed_outlines.insert(file_key, HashSet::default());
+            }
+        }
+        self.serialize(cx);
+
         if buffers_to_unfold.is_empty() {
             self.update_cached_entries(None, window, cx);
         } else {
@@ -2167,6 +2232,28 @@ impl OutlinePanel {
         active_editor.update(cx, |editor, cx| {
             buffers_to_fold.retain(|buffer_id| !editor.is_buffer_folded(*buffer_id, cx));
         });
+        for (buffer_id, buffer) in &self.buffers {
+            if let Some(file_key) = self.file_path_for_buffer_id(*buffer_id, cx) {
+                if let Some(snapshot) = self.buffer_snapshot_for_id(*buffer_id, cx) {
+                    let outlines = match &buffer.outlines {
+                        OutlineState::Outlines(outlines) | OutlineState::Invalidated(outlines) => outlines,
+                        OutlineState::NotFetched => continue,
+                    };
+                    let mut set = HashSet::default();
+                    for outline in outlines {
+                        let start_row = outline.range.start.to_point(&snapshot).row;
+                        set.insert(CollapsedSymbolKey {
+                            start_row,
+                            depth: outline.depth,
+                            text: outline.text.to_string(),
+                        });
+                    }
+                    self.custom_collapsed_outlines.insert(file_key, set);
+                }
+            }
+        }
+        self.serialize(cx);
+
         if buffers_to_fold.is_empty() {
             self.update_cached_entries(None, window, cx);
         } else {
@@ -2238,9 +2325,32 @@ impl OutlinePanel {
                 }
             }
             PanelEntry::Outline(OutlineEntry::Outline(outline)) => {
+                let buffer_id = outline.range.start.buffer_id;
                 let collapsed_entry = CollapsedEntry::Outline(outline.range.clone());
-                if !self.collapsed_entries.remove(&collapsed_entry) {
+                let was_collapsed = self.collapsed_entries.contains(&collapsed_entry);
+                if was_collapsed {
+                    self.collapsed_entries.remove(&collapsed_entry);
+                } else {
                     self.collapsed_entries.insert(collapsed_entry);
+                }
+                if let Some(file_key) = self.file_path_for_buffer_id(buffer_id, cx) {
+                    self.ensure_custom_collapsed_initialized(buffer_id, &file_key, cx);
+                    if let Some(snapshot) = self.buffer_snapshot_for_id(buffer_id, cx) {
+                        let start_row = outline.range.start.to_point(&snapshot).row;
+                        let key = CollapsedSymbolKey {
+                            start_row,
+                            depth: outline.depth,
+                            text: outline.text.to_string(),
+                        };
+                        if let Some(set) = self.custom_collapsed_outlines.get_mut(&file_key) {
+                            if was_collapsed {
+                                set.remove(&key);
+                            } else {
+                                set.insert(key);
+                            }
+                        }
+                        self.serialize(cx);
+                    }
                 }
             }
             PanelEntry::Search(_) => return,
@@ -3819,16 +3929,27 @@ impl OutlinePanel {
 
                     outline_panel
                         .update_in(cx, |outline_panel, window, cx| {
-                            let pending_default_depth =
+                            let file_key = outline_panel
+                                .file_path_for_buffer_id(buffer_id, cx);
+                            let has_custom = file_key
+                                .as_ref()
+                                .is_some_and(|k| outline_panel.custom_collapsed_outlines.contains_key(k));
+                            let pending_default_depth = if has_custom {
+                                outline_panel.default_depth_applied_buffers.insert(buffer_id);
+                                None
+                            } else {
                                 outline_panel.pending_default_expansion_depth.filter(|_| {
                                     outline_panel
                                         .default_depth_applied_buffers
                                         .insert(buffer_id)
-                                });
+                                })
+                            };
 
+                            let snapshot = outline_panel.buffer_snapshot_for_id(buffer_id, cx);
                             let mut entries_changed = false;
                             if let Some(buffer) = outline_panel.buffers.get_mut(&buffer_id) {
                                 entries_changed = pending_default_depth.is_some()
+                                    || has_custom
                                     || match &buffer.outlines {
                                         OutlineState::Outlines(outlines)
                                         | OutlineState::Invalidated(outlines) => {
@@ -3838,7 +3959,28 @@ impl OutlinePanel {
                                     };
                                 buffer.outlines = OutlineState::Outlines(fetched_outlines);
 
-                                if let Some(default_depth) = pending_default_depth
+                                if let Some(ref file_key) = file_key
+                                    && let Some(saved_collapsed) = outline_panel.custom_collapsed_outlines.get(file_key).cloned()
+                                {
+                                    if let (Some(ref snapshot), OutlineState::Outlines(outlines)) = (
+                                        snapshot.as_ref(),
+                                        &buffer.outlines,
+                                    ) {
+                                        for outline in outlines {
+                                            let start_row = outline.range.start.to_point(&snapshot).row;
+                                            let key = CollapsedSymbolKey {
+                                                start_row,
+                                                depth: outline.depth,
+                                                text: outline.text.to_string(),
+                                            };
+                                            if saved_collapsed.contains(&key) {
+                                                outline_panel.collapsed_entries.insert(
+                                                    CollapsedEntry::Outline(outline.range.clone()),
+                                                );
+                                            }
+                                        }
+                                    }
+                                } else if let Some(default_depth) = pending_default_depth
                                     && let OutlineState::Outlines(outlines) = &buffer.outlines
                                 {
                                     let outlines_with_children = outlines
@@ -4006,6 +4148,44 @@ impl OutlinePanel {
                 .read(cx)
                 .snapshot(),
         )
+    }
+
+    fn file_path_for_buffer_id(&self, buffer_id: BufferId, cx: &App) -> Option<String> {
+        let snapshot = self.buffer_snapshot_for_id(buffer_id, cx)?;
+        let file = snapshot.file()?;
+        if let Some(project_file) = File::from_dyn(Some(file)) {
+            let abs_path = project_file.worktree.read(cx).absolutize(&project_file.path);
+            return Some(abs_path.to_string_lossy().to_string());
+        }
+        Some(file.full_path(cx).to_string_lossy().to_string())
+    }
+
+    fn ensure_custom_collapsed_initialized(&mut self, buffer_id: BufferId, file_key: &str, cx: &App) {
+        if self.custom_collapsed_outlines.contains_key(file_key) {
+            return;
+        }
+        let Some(snapshot) = self.buffer_snapshot_for_id(buffer_id, cx) else {
+            return;
+        };
+        let Some(buffer) = self.buffers.get(&buffer_id) else {
+            return;
+        };
+        let outlines = match &buffer.outlines {
+            OutlineState::Outlines(outlines) | OutlineState::Invalidated(outlines) => outlines,
+            OutlineState::NotFetched => return,
+        };
+        let mut set = HashSet::default();
+        for outline in outlines {
+            if self.collapsed_entries.contains(&CollapsedEntry::Outline(outline.range.clone())) {
+                let start_row = outline.range.start.to_point(&snapshot).row;
+                set.insert(CollapsedSymbolKey {
+                    start_row,
+                    depth: outline.depth,
+                    text: outline.text.to_string(),
+                });
+            }
+        }
+        self.custom_collapsed_outlines.insert(file_key.to_string(), set);
     }
 
     fn abs_path(&self, entry: &PanelEntry, cx: &App) -> Option<PathBuf> {
