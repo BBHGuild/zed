@@ -135,7 +135,7 @@ Other entities can then register a callback to handle these events by doing `cx.
 ## Build guidelines
 
 - Use `./script/clippy` instead of `cargo clippy`
-- Release builds on memory-constrained systems (<= 16 GB RAM): ALWAYS use `./build-release.sh` or pass `-j 2` (`cargo build --release -p zed -p cli -j 2`). Release linking spawns parallel linker jobs (4-6 GB RAM each); unconstrained builds trigger the Linux kernel OOM killer. Concurrency is also clamped in `.cargo/config.toml` (`[build] jobs = 2`).
+- Release builds on memory-constrained systems (<= 16 GB RAM): ALWAYS use `./build-release.sh` or pass `-j 1` (`cargo build --release -p zed -p cli -j 1`). Release linking and heavy crates (`editor`, `workspace`) consume 4-6 GB RAM each; concurrent compilation on <= 16 GB RAM systems triggers the Linux kernel OOM killer. Concurrency is clamped in `.cargo/config.toml` (`[build] jobs = 1`).
 - NEVER run `cargo clean`: it deletes the 5.9 GB `target/release` dependency cache, turning 3-minute incremental builds into 25-minute full rebuilds. To reclaim disk space safely, delete `target/debug` only (`rm -rf target/debug`).
 - Terminal detachment: `~/.local/bin/zed` must always link to `target/release/cli`, not `target/release/zed` (which lacks daemonization and kills the editor when the terminal closes).
 

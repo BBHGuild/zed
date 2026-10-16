@@ -7,8 +7,8 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$REPO_ROOT"
 
-echo "==> Building Zed fork in release mode (jobs = 2)..."
-cargo build --release -p zed -p cli -j 2 "$@"
+echo "==> Building Zed fork in release mode (jobs = 1)..."
+cargo build --release -p zed -p cli -j 1 "$@"
 
 echo "==> Build complete!"
 echo "    - Editor: $REPO_ROOT/target/release/zed"

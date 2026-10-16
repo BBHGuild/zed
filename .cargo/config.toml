@@ -1,7 +1,7 @@
 [build]
-# Restrict parallel compilation jobs to 2 to stay safely within the 14 GB RAM ceiling
-# and prevent Linux kernel OOM killer during release linking.
-jobs = 2
+# Restrict parallel compilation jobs to 1 to stay safely within the 14 GB RAM ceiling
+# and prevent Linux kernel OOM killer during heavy release linking.
+jobs = 1
 
 [target.'cfg(all())']
 # v0 mangling scheme provides more detailed backtraces around closures
