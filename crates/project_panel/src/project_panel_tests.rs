@@ -12386,7 +12386,7 @@ async fn test_preserve_temporary_unfolded_active_index_on_blur_from_context_menu
 #[gpui::test]
 async fn test_context_menu_opens_at_mouse_position(cx: &mut gpui::TestAppContext) {
     init_test(cx);
-    let (panel, mut cx) = open_panel_with_files(3, DockSide::Left, cx).await;
+    let (panel, mut cx) = open_panel_with_files(3, DockPosition::Left, cx).await;
     let cx = &mut cx;
 
     let mouse_position = point(px(37.), px(83.));
@@ -12417,7 +12417,7 @@ async fn test_context_menu_opens_at_mouse_position(cx: &mut gpui::TestAppContext
 #[gpui::test]
 async fn test_context_menu_for_entry_in_upper_half_opens_downwards(cx: &mut gpui::TestAppContext) {
     init_test(cx);
-    let (panel, mut cx) = open_panel_with_files(3, DockSide::Left, cx).await;
+    let (panel, mut cx) = open_panel_with_files(3, DockPosition::Left, cx).await;
     let cx = &mut cx;
 
     let entry_id =
@@ -12471,7 +12471,7 @@ async fn test_context_menu_for_entry_in_right_docked_panel_opens_leftwards(
     cx: &mut gpui::TestAppContext,
 ) {
     init_test(cx);
-    let (panel, mut cx) = open_panel_with_files(3, DockSide::Right, cx).await;
+    let (panel, mut cx) = open_panel_with_files(3, DockPosition::Right, cx).await;
     let cx = &mut cx;
 
     let entry_id =
@@ -12514,7 +12514,7 @@ async fn test_context_menu_for_entry_in_lower_half_scrolls_into_view_and_opens_u
     cx: &mut gpui::TestAppContext,
 ) {
     init_test(cx);
-    let (panel, mut cx) = open_panel_with_files(200, DockSide::Left, cx).await;
+    let (panel, mut cx) = open_panel_with_files(200, DockPosition::Left, cx).await;
     let cx = &mut cx;
 
     let entry_id = find_project_entry(&panel, "root/file_199.txt", cx)
@@ -12575,7 +12575,7 @@ async fn test_panel_keeps_focus_highlight_while_context_menu_is_deployed(
     cx: &mut gpui::TestAppContext,
 ) {
     init_test(cx);
-    let (panel, mut cx) = open_panel_with_files(3, DockSide::Left, cx).await;
+    let (panel, mut cx) = open_panel_with_files(3, DockPosition::Left, cx).await;
     let cx = &mut cx;
 
     let entry_id =
@@ -12606,12 +12606,18 @@ async fn test_panel_keeps_focus_highlight_while_context_menu_is_deployed(
 
 async fn open_panel_with_files(
     file_count: usize,
-    dock: DockSide,
+    dock: DockPosition,
     cx: &mut gpui::TestAppContext,
 ) -> (Entity<ProjectPanel>, VisualTestContext) {
     cx.update(|cx| {
         let settings = *ProjectPanelSettings::get_global(cx);
-        ProjectPanelSettings::override_global(ProjectPanelSettings { dock, ..settings }, cx);
+        ProjectPanelSettings::override_global(
+            ProjectPanelSettings {
+                dock: dock.into(),
+                ..settings
+            },
+            cx,
+        );
     });
 
     let fs = FakeFs::new(cx.executor());
@@ -12635,6 +12641,19 @@ async fn open_panel_with_files(
     });
     cx.run_until_parked();
     (panel, cx)
+}
+
+#[gpui::test]
+async fn test_bottom_docked_panel(cx: &mut gpui::TestAppContext) {
+    init_test(cx);
+    let (panel, mut cx) = open_panel_with_files(3, DockPosition::Bottom, cx).await;
+    let cx = &mut cx;
+
+    panel.update_in(cx, |panel, window, cx| {
+        assert_eq!(panel.position(window, cx), DockPosition::Bottom);
+        assert!(panel.position_is_valid(DockPosition::Bottom));
+        assert_eq!(panel.default_size(window, cx), px(240.0));
+    });
 }
 
 async fn run_create_file_in_folded_path_case(

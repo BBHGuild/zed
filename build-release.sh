@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Canonical release build script for Zed fork on resource-constrained systems (e.g. 14 GB RAM).
-# Concurrency is strictly clamped to 2 jobs (-j 2) to prevent Linux OOM killer during release linking.
+# Concurrency is strictly clamped to 1 job (-j 1) to prevent Linux OOM killer during release linking.
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$REPO_ROOT"

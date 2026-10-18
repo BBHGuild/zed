@@ -2,8 +2,9 @@ use editor::{EditorSettings, ui_scrollbar_settings_from_raw};
 use gpui::Pixels;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+pub use settings::DockPosition;
 use settings::{
-    DockSide, FolderIndicator, IntoGpui, ProjectPanelEntrySpacing, ProjectPanelSortMode,
+    FolderIndicator, IntoGpui, ProjectPanelEntrySpacing, ProjectPanelSortMode,
     ProjectPanelSortOrder, ProjectPanelTitleTooltipDelay, RegisterSetting, Settings,
     ShowDiagnostics, ShowIndentGuides,
 };
@@ -15,7 +16,7 @@ pub struct ProjectPanelSettings {
     pub hide_gitignore: bool,
     pub default_width: Pixels,
     pub title_tooltip_delay: ProjectPanelTitleTooltipDelay,
-    pub dock: DockSide,
+    pub dock: DockPosition,
     pub entry_spacing: ProjectPanelEntrySpacing,
     pub file_icons: bool,
     pub folder_indicator: FolderIndicator,

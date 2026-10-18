@@ -44,7 +44,7 @@ use rayon::slice::ParallelSliceMut;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use settings::{
-    DockSide, ProjectPanelEntrySpacing, Settings, SettingsStore, ShowDiagnostics, ShowIndentGuides,
+    ProjectPanelEntrySpacing, Settings, SettingsStore, ShowDiagnostics, ShowIndentGuides,
     update_settings_file,
 };
 use smallvec::SmallVec;
@@ -1378,10 +1378,12 @@ impl ProjectPanel {
         let opens_downwards = entry_bounds.center().y <= window.viewport_size().center().y;
         // The menu's anchored corner sits on the diagonally opposite corner of the entry.
         match (ProjectPanelSettings::get_global(cx).dock, opens_downwards) {
-            (DockSide::Left, true) => (entry_bounds.bottom_left(), Anchor::TopLeft),
-            (DockSide::Left, false) => (entry_bounds.origin, Anchor::BottomLeft),
-            (DockSide::Right, true) => (entry_bounds.bottom_right(), Anchor::TopRight),
-            (DockSide::Right, false) => (entry_bounds.top_right(), Anchor::BottomRight),
+            (settings::DockPosition::Left, true) => (entry_bounds.bottom_left(), Anchor::TopLeft),
+            (settings::DockPosition::Left, false) => (entry_bounds.origin, Anchor::BottomLeft),
+            (settings::DockPosition::Right, true) => (entry_bounds.bottom_right(), Anchor::TopRight),
+            (settings::DockPosition::Right, false) => (entry_bounds.top_right(), Anchor::BottomRight),
+            (settings::DockPosition::Bottom, true) => (entry_bounds.bottom_left(), Anchor::TopLeft),
+            (settings::DockPosition::Bottom, false) => (entry_bounds.origin, Anchor::BottomLeft),
         }
     }
 
@@ -8252,27 +8254,33 @@ impl EventEmitter<PanelEvent> for ProjectPanel {}
 impl Panel for ProjectPanel {
     fn position(&self, _: &Window, cx: &App) -> DockPosition {
         match ProjectPanelSettings::get_global(cx).dock {
-            DockSide::Left => DockPosition::Left,
-            DockSide::Right => DockPosition::Right,
+            settings::DockPosition::Left => DockPosition::Left,
+            settings::DockPosition::Bottom => DockPosition::Bottom,
+            settings::DockPosition::Right => DockPosition::Right,
         }
     }
 
     fn position_is_valid(&self, position: DockPosition) -> bool {
-        matches!(position, DockPosition::Left | DockPosition::Right)
+        matches!(position, DockPosition::Left | DockPosition::Bottom | DockPosition::Right)
     }
 
     fn set_position(&mut self, position: DockPosition, _: &mut Window, cx: &mut Context<Self>) {
         settings::update_settings_file(self.fs.clone(), cx, move |settings, _| {
             let dock = match position {
-                DockPosition::Left | DockPosition::Bottom => DockSide::Left,
-                DockPosition::Right => DockSide::Right,
+                DockPosition::Left => settings::DockPosition::Left,
+                DockPosition::Bottom => settings::DockPosition::Bottom,
+                DockPosition::Right => settings::DockPosition::Right,
             };
             settings.project_panel.get_or_insert_default().dock = Some(dock);
         });
     }
 
-    fn default_size(&self, _: &Window, cx: &App) -> Pixels {
-        ProjectPanelSettings::get_global(cx).default_width
+    fn default_size(&self, window: &Window, cx: &App) -> Pixels {
+        let settings = ProjectPanelSettings::get_global(cx);
+        match self.position(window, cx) {
+            DockPosition::Left | DockPosition::Right => settings.default_width,
+            DockPosition::Bottom => px(240.0),
+        }
     }
 
     fn icon(&self, _: &Window, cx: &App) -> Option<IconName> {

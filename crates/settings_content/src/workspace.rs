@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use settings_macros::{MergeFrom, with_fallible_options};
 
 use crate::{
-    CenteredPaddingSettings, CommandAliasTarget, DelayMs, DockPosition, DockSide, InactiveOpacity,
+    CenteredPaddingSettings, CommandAliasTarget, DelayMs, DockPosition, InactiveOpacity,
     ShowIndentGuides, ShowScrollbar, serialize_optional_f32_with_two_decimal_places,
 };
 
@@ -834,7 +834,7 @@ pub struct ProjectPanelSettingsContent {
     /// The position of project panel
     ///
     /// Default: right (Agentic layout), left (Classic layout)
-    pub dock: Option<DockSide>,
+    pub dock: Option<DockPosition>,
     // TODO
     pub title_tooltip_delay: Option<ProjectPanelTitleTooltipDelay>,
     /// Spacing between worktree entries in the project panel.
